@@ -89,9 +89,11 @@ extern U8 EP2ReceiveFlag;
 extern U8 EP2TransferFlag;
 extern U8 RxBufLen;
 extern U8 TxBufLen;
-extern U8 EP2RXBuff[64];
-extern U8 EP2TXBuff[1024];
+extern U8 EP2RXBuff[256];
+extern U8 EP2TXBuff[256];
 
+
+u8 usb_buf_busy_flag = 0;
 int main(void)
 {
 	U8 i,count;
@@ -130,7 +132,9 @@ int main(void)
 	led_timeout = TIMEOUT_DELAY;
 	usb_rx_ch = -1;
 	usb_tx_ch = -1;
-
+	
+	GPIOA ->CRL &= 0XFFFF0000;
+	GPIOA ->CRL |= 0XFFFF3333;
 	while (1)
 	{
 		if (pUserAppDescriptor == NULL)
@@ -166,10 +170,16 @@ int main(void)
 #if (USBD_CDC_ACM_ENABLE == 1)
 
 		NotifyOnStatusChange();
-
+//		if(USART_PORT ->ISR &0x08)
+//		{
+//			USART_PORT ->GCR &= ~(3 << 3);
+//			USART_PORT ->GCR = 3 << 3;
+//			UART_ClearITPendingBit(USART_PORT,UART_OVER_ERR);
+//		}
 		// USB -> UART
 		if(EP2ReceiveFlag == 1)
 		{
+			
 			EP2ReceiveFlag = 0;
 			Uart_PutBuff(EP2RXBuff,RxBufLen); 
 		}
@@ -192,12 +202,23 @@ int main(void)
 					count = TxBufLen;
 					TxBufLen = 0;
 				}
+				usb_buf_busy_flag = 1;
 				for(i = 0;i < count;i++)
 				{
 					USB->rEP2_FIFO = *(EP2TXBuff + i);
 				}
+					
+				if(usb_buf_busy_flag == 1)	
+				{
 				USB->rEP2_CTRL = 0x80|count;
-				EP2TransferFlag = 0;
+				}
+				else
+				{
+					USB->rTOP |= 1<<3;
+					USB->rTOP &= ~(1<<3);
+				}		
+				if(0 == TxBufLen)
+					EP2TransferFlag = 0;
 			}
 		}
 #endif

@@ -47,8 +47,8 @@ U8 EP2ReceiveFlag = 0;
 U8 EP2TransferFlag  = 0;
 U8 RxBufLen = 0;
 U8 TxBufLen = 0;
-U8 EP2RXBuff[64];
-U8 EP2TXBuff[1024];
+U8 EP2RXBuff[256];
+U8 EP2TXBuff[256];
 
 /**
  * @brief	USB Device Interrupt enable
@@ -450,10 +450,12 @@ U32 USBD_GetError (void)
  */
 //USB主机发送给USB设备复位事件
 //void USB_LP_CAN1_RX0_IRQHandler(void)
+extern u8 usb_buf_busy_flag ;
 void USB_HP_CAN1_TX_IRQHandler(void)
 {
 
 	int i = 0;
+	u8 temp;
   	U32  num = 0;
 
 	U32 intistr, temp_ep,temp_epn;
@@ -556,14 +558,17 @@ void USB_HP_CAN1_TX_IRQHandler(void)
 			{
 				if(num == 2)
 				{
-					EP2TransferFlag = 1;
+					if(EP2ReceiveFlag == 0)
+						EP2TransferFlag = 1;
 				}
 			}
 			if(temp_epn & EPn_INT_STATE_INACK)							//IN包非应答中断，准备写入数据
 			{
 				if(num == 2)
 				{
-					EP2TransferFlag = 1;
+					usb_buf_busy_flag = 0;
+//					if(EP2ReceiveFlag == 0)
+//						EP2TransferFlag = 1;
 				}
 				else if (USBD_P_EP[num])
 				{
@@ -575,12 +580,22 @@ void USB_HP_CAN1_TX_IRQHandler(void)
 				if(num == 2)
 				{
 					usbEp0InPack = 0;
-					RxBufLen = EPxAVAIL(2) & 0x7f;
-					for (i = 0; i < RxBufLen ; i++)
+					if(usb_buf_busy_flag == 0)
 					{
-						*(EP2RXBuff + i) = EPxFIFO(2);
+						RxBufLen = EPxAVAIL(2) & 0x7f;
+						for (i = 0; i < RxBufLen ; i++)
+						{
+							*(EP2RXBuff + i) = EPxFIFO(2);
+						}
+						EP2ReceiveFlag = 1;
 					}
-					EP2ReceiveFlag = 1;
+					else
+					{
+						USB->rTOP |= 1<<3;
+						usb_buf_busy_flag = 2;
+						USB->rTOP &= ~(1<<3);
+					
+					}
 				}
 				else if (USBD_P_EP[num])
 				{
